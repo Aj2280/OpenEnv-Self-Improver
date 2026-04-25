@@ -1,0 +1,113 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap');
+
+:root {
+  --bg-deep: #050505;
+  --bg-card: rgba(18, 18, 18, 0.7);
+  --bg-card-hover: rgba(25, 25, 25, 0.8);
+  --border-glass: rgba(255, 255, 255, 0.1);
+  --border-glass-bright: rgba(255, 255, 255, 0.2);
+  
+  --primary: #3b82f6;
+  --primary-glow: rgba(59, 130, 246, 0.5);
+  
+  --accent-math: #00d2ff;
+  --accent-negotiate: #bf5af2;
+  --accent-code: #32d74b;
+  
+  --text-main: #f5f5f7;
+  --text-muted: #86868b;
+  
+  --glass-blur: blur(12px);
+  --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+body {
+  background-color: var(--bg-deep);
+  color: var(--text-main);
+  overflow-x: hidden;
+  min-height: 100vh;
+  background-image: 
+    radial-gradient(circle at 20% 30%, rgba(59, 130, 246, 0.05) 0%, transparent 40%),
+    radial-gradient(circle at 80% 70%, rgba(191, 90, 242, 0.05) 0%, transparent 40%);
+}
+
+h1, h2, h3, .brand-text {
+  font-family: 'Outfit', sans-serif;
+}
+
+.glass-panel {
+  background: var(--bg-card);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border-glass);
+  border-radius: 24px;
+  transition: var(--transition-smooth);
+}
+
+.glass-panel:hover {
+  border-color: var(--border-glass-bright);
+  background: var(--bg-card-hover);
+}
+
+.glow-shadow {
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+}
+
+.accent-math { color: var(--accent-math); }
+.accent-negotiate { color: var(--accent-negotiate); }
+.accent-code { color: var(--accent-code); }
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-deep);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+  box-shadow: 0 4px 14px 0 rgba(59, 130, 246, 0.39);
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.45);
+}
+
+.badge {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.badge-math { background: rgba(0, 210, 255, 0.1); color: var(--accent-math); border: 1px solid rgba(0, 210, 255, 0.2); }
+.badge-negotiate { background: rgba(191, 90, 242, 0.1); color: var(--accent-negotiate); border: 1px solid rgba(191, 90, 242, 0.2); }
+.badge-code { background: rgba(50, 215, 75, 0.1); color: var(--accent-code); border: 1px solid rgba(50, 215, 75, 0.2); }

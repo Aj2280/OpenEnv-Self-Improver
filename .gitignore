@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+outputs/
+math_grpo_mps/
+math_grpo_mps_final/
+math_grpo_merged/
+math_grpo_v2/
+math_grpo_v2_merged/
+node_modules/
+plots/
+*.png
+*.jpg
+*.svg

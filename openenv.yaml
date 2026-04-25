@@ -1,0 +1,13 @@
+spec_version: 1
+name: math_escalation_env
+version: 0.1.0
+description: "Adaptive Math Curriculum for Recursive Skill Amplification"
+theme: "Theme #4: Self-Improvement"
+author: "Hackathon Participant"
+type: space
+runtime: fastapi
+app: server.app:app
+port: 8000
+metadata:
+  difficulty_levels: 10
+  skills: ["arithmetic", "algebra", "logic"]

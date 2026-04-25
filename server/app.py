@@ -39,7 +39,34 @@ for route in math_app.routes:
 
 @app.get("/api/landing")
 def landing():
-    return {"status": "ok", "environments": ["/", "/negotiate", "/code"]}
+    return {
+        "status": "ok",
+        "suite": "OpenEnv Self-Improver — Multi-Environment Suite",
+        "theme": "Theme #4: Self-Improvement via Adaptive Environments",
+        "environments": [
+            {
+                "name": "Math Escalation",
+                "description": "10-tier adaptive math curriculum that escalates difficulty as the agent improves. Rewards correct answers and penalizes wrong ones.",
+                "tools": ["get_problem", "submit_answer", "record_thought", "get_hint"],
+                "prefix": "/",
+                "docs": "/docs"
+            },
+            {
+                "name": "Negotiation Arena",
+                "description": "Self-play resource negotiation arena. Agent negotiates resource splits against a rule-based opponent across 10 difficulty tiers.",
+                "tools": ["get_negotiation_state", "make_offer", "finalize_offer", "accept_opponent_offer", "record_thought"],
+                "prefix": "/negotiate",
+                "docs": "/negotiate/docs"
+            },
+            {
+                "name": "Coding Competition",
+                "description": "Evolving coding challenge suite that progressively introduces complexity. Agent writes and tests Python solutions.",
+                "tools": ["get_challenge", "submit_code", "run_tests", "record_thought"],
+                "prefix": "/code",
+                "docs": "/code/docs"
+            }
+        ]
+    }
 
 # UI logic
 frontend_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")

@@ -20,17 +20,18 @@ dependencies = [
     "pydantic>=2.0.0",
     "uvicorn>=0.24.0",
     "requests>=2.31.0",
-    # Additional environment-specific dependencies
-    "trl>=0.8.0",
-    "torch>=2.0.0",
-    "transformers>=4.30.0",
-    "matplotlib>=3.10.9",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=9.0.3",
     "pytest-cov>=4.0.0",
+]
+train = [
+    "trl>=0.8.0",
+    "torch>=2.0.0",
+    "transformers>=4.30.0",
+    "matplotlib>=3.10.9",
 ]
 
 [project.scripts]

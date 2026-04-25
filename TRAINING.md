@@ -1,7 +1,7 @@
-# Math Escalation Environment — TRL/GRPO Training Guide
+# OpenEnv-Self-Improver — RL Training Guide
 
 This document explains how to connect **Hugging Face TRL + Unsloth** to the
-Math Escalation Environment for real LLM fine-tuning with reinforcement learning.
+OpenEnv-Self-Improver Environment for real LLM fine-tuning with reinforcement learning.
 
 ---
 

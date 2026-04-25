@@ -1,5 +1,5 @@
 spec_version: 1
-name: math_escalation_env
+name: openenv_self_improver_env
 version: 0.1.0
 description: "Adaptive Math Curriculum for Recursive Skill Amplification"
 theme: "Theme #4: Self-Improvement"

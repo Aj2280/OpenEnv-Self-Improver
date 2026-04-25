@@ -1,3 +1,13 @@
+---
+title: OpenEnv-Self-Improver
+emoji: 🚀
+colorFrom: purple
+colorTo: blue
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # 🚀 OpenEnv-Self-Improver
 ### *OpenEnv Theme #4: Recursive Skill Amplification*
 

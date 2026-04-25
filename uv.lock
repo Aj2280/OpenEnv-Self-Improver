@@ -2769,7 +2769,7 @@ core = [
 ]
 
 [[package]]
-name = "openenv-math-escalation"
+name = "openenv-self-improver"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

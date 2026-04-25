@@ -8,7 +8,7 @@
 [![Environments](https://img.shields.io/badge/Environments-3-red)](#-three-environments)
 
 > **GitHub Repo:** [https://github.com/Aj2280/OpenEnv-Self-Improver](https://github.com/Aj2280/OpenEnv-Self-Improver)  
-> **Hugging Face Space:** [https://huggingface.co/spaces/Abhi2280/OpenEnv-Self-Improver](https://huggingface.co/spaces/Abhi2280/OpenEnv-Self-Improver) (Pending Rename)  
+> **Hugging Face Space:** [https://huggingface.co/spaces/Abhi2280/OpenEnv-Self-Improver](https://huggingface.co/spaces/Abhi2280/OpenEnv-Self-Improver)  
 > **Training Notebook:** [Colab Notebook](TRAINING.md)
 
 ---

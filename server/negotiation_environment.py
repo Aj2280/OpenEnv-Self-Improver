@@ -224,9 +224,11 @@ class NegotiationEnvironment(MCPEnvironment):
         self._generate_negotiation(s)
         return Observation(
             done=False, reward=0.0,
-            observation={"episode_id": eid, "status": "ready"},
-            metadata={"episode_id": eid, "difficulty": s["difficulty"]}
+            metadata={"episode_id": eid, "status": "ready", "difficulty": s["difficulty"]}
         )
+
+    def _step_impl(self, action: Action, **kwargs) -> Observation:
+        raise NotImplementedError("Only MCP actions are supported")
 
     def step(self, action: Action, **kwargs) -> Observation:
         eid = kwargs.get("episode_id", "default")
@@ -236,10 +238,14 @@ class NegotiationEnvironment(MCPEnvironment):
         return Observation(
             done=s["difficulty"] > 10 or s["step_count"] > 100,
             reward=s["last_reward"],
-            observation=obs.observation,
-            metadata={"difficulty": s["difficulty"], "episode_id": eid, "step": s["step_count"]}
+            metadata={
+                "observation": getattr(obs, "result", None) or getattr(obs, "observation", None),
+                "difficulty": s["difficulty"],
+                "episode_id": eid,
+                "step": s["step_count"]
+            }
         )
 
     @property
     def state(self) -> State:
-        return self._mcp_state
+        return State()

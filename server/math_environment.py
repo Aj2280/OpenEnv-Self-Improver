@@ -170,9 +170,15 @@ class MathEscalationEnvironment(MCPEnvironment):
 
         return Observation(
             done=False, reward=0.0,
-            observation={"episode_id": eid, "status": "ready", "problem": s["current_problem"]},
-            metadata={"episode_id": eid, "difficulty": s["difficulty"]}
+            metadata={"episode_id": eid, "status": "ready", "problem": s["current_problem"], "difficulty": s["difficulty"]}
         )
+
+    @property
+    def state(self) -> State:
+        return State()
+
+    def _step_impl(self, action: Action, **kwargs) -> Observation:
+        raise NotImplementedError("Only MCP actions are supported")
 
     def step(self, action: Action, **kwargs) -> Observation:
         eid = kwargs.get("episode_id", "default")
@@ -185,8 +191,8 @@ class MathEscalationEnvironment(MCPEnvironment):
         return Observation(
             done=s["step_count"] >= 200,
             reward=s["last_reward"],
-            observation=obs.observation,
             metadata={
+                "observation": getattr(obs, "result", None) or getattr(obs, "observation", None),
                 "difficulty": s["difficulty"],
                 "episode_id": eid,
                 "step": s["step_count"]

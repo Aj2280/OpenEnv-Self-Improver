@@ -188,9 +188,9 @@ class CodingEnvironment(MCPEnvironment):
     SUPPORTS_CONCURRENT_SESSIONS = True
 
     def __init__(self):
-        super().__init__()
-        self.mcp = FastMCP("coding_env")
+        self.mcp = FastMCP("coding_competition")
         self._register_tools()
+        super().__init__(self.mcp)
 
     def _register_tools(self):
         @self.mcp.tool()

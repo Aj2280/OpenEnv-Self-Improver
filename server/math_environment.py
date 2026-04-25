@@ -97,9 +97,9 @@ class MathEscalationEnvironment(MCPEnvironment):
     SUPPORTS_CONCURRENT_SESSIONS = True
 
     def __init__(self):
-        super().__init__()
         self.mcp = FastMCP("math_escalation")
         self._register_tools()
+        super().__init__(self.mcp)
 
     def _register_tools(self):
         @self.mcp.tool()

@@ -9,9 +9,9 @@ requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "openenv-math-escalation"
+name = "openenv-self-improver"
 version = "0.1.0"
-description = "Math Escalation Environment for OpenEnv - adaptive math task environment"
+description = "Self-Improving Adaptive RL Suite for OpenEnv - Meta Hackathon Theme #4"
 requires-python = ">=3.10"
 dependencies = [
     # Core OpenEnv dependencies (required for server functionality)

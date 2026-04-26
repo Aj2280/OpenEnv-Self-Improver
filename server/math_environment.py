@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from openenv.core.env_server.mcp_environment import MCPEnvironment
 from openenv.core.env_server.types import Observation, Action, State
+from openenv.core.env_server.mcp_types import CallToolObservation
 from fastmcp import FastMCP
 
 # ---------------------------------------------------------------------------
@@ -187,14 +188,25 @@ class MathEscalationEnvironment(MCPEnvironment):
         # Execute tool via FastMCP
         obs = super().step(action, **kwargs)
         
-        # Build final observation with reward and metadata
-        return Observation(
-            done=s["step_count"] >= 200,
-            reward=s["last_reward"],
-            metadata={
-                "observation": getattr(obs, "result", None) or getattr(obs, "observation", None),
+        # Preserve the tool result fields, but attach environment reward/done/metadata.
+        # `create_app(..., CallToolObservation)` expects tool_name/result/error at the top level.
+        if not isinstance(obs, CallToolObservation):
+            obs = CallToolObservation(tool_name="unknown", result=getattr(obs, "result", None), error=None)
+
+        merged_metadata = dict(getattr(obs, "metadata", {}) or {})
+        merged_metadata.update(
+            {
                 "difficulty": s["difficulty"],
                 "episode_id": eid,
-                "step": s["step_count"]
+                "step": s["step_count"],
             }
+        )
+
+        return CallToolObservation(
+            tool_name=obs.tool_name,
+            result=obs.result,
+            error=obs.error,
+            done=s["step_count"] >= 200,
+            reward=s["last_reward"],
+            metadata=merged_metadata,
         )

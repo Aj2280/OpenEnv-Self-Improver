@@ -1,0 +1,7 @@
+unsloth @ git+https://github.com/unslothai/unsloth.git
+unsloth_zoo @ git+https://github.com/unslothai/unsloth-zoo.git
+trl>=0.12.0
+datasets
+huggingface_hub
+mergekit
+transformers==4.45.2

@@ -1,3 +1,4 @@
+import os
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import requests
@@ -5,7 +6,7 @@ import json
 import re
 
 MODEL_PATH = "./math_grpo_mps_final"
-SERVER_URL = "http://localhost:8000"
+SERVER_URL = os.getenv("SERVER_URL", "http://localhost:8000")
 
 def get_problem():
     try:
@@ -59,25 +60,43 @@ def main():
     print("\n--- Model Response ---\n")
     print(response)
 
-    # Extract answer from response
-    # Look for submit_answer({"answer": ...}) or just the answer
-    match = re.search(r'submit_answer\(.*?"answer":\s*(\d+).*?\)', response)
+    # Extract answer from response.
+    # Prefer a structured tool call pattern, otherwise fall back to the last number found.
+    match = re.search(
+        r'submit_answer\(\s*.*?"answer"\s*:\s*(-?\d+(?:\.\d+)?)\s*.*?\)',
+        response,
+        re.DOTALL,
+    )
     if match:
-        answer = match.group(1)
-        print(f"\nExtracted Answer: {answer}")
-        
-        # Submit to server
-        resp = requests.post(f"{SERVER_URL}/step", json={
+        answer = float(match.group(1))
+    else:
+        nums = re.findall(r"-?\d+\.?\d*", response)
+        answer = float(nums[-1]) if nums else None
+
+    if answer is None:
+        print("\nCould not extract a numeric answer from the model output.")
+        return
+
+    print(f"\nExtracted Answer: {answer}")
+
+    # Submit to server
+    resp = requests.post(
+        f"{SERVER_URL}/step",
+        json={
             "action": {
                 "type": "call_tool",
                 "tool_name": "submit_answer",
-                "arguments": {"answer": int(answer)}
+                "arguments": {"answer": float(answer)},
             }
-        })
-        print(f"Server Response: {resp.json()['observation']['result']['data']}")
-        print(f"Reward: {resp.json()['observation']['reward']}")
-    else:
-        print("\nCould not find a structured answer submission.")
+        },
+        timeout=10,
+    )
+    j = resp.json()
+    obs = j.get("observation", {})
+    # openenv-core serializes tool results under observation.result.data
+    result_data = (((obs.get("result") or {}).get("data")) if isinstance(obs, dict) else None)
+    print(f"Server Response: {result_data if result_data is not None else j}")
+    print(f"Reward: {j.get('reward')}")
 
 if __name__ == "__main__":
     main()

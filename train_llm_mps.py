@@ -13,20 +13,31 @@ BASE_URL = "http://localhost:8000"
 # 1. Model Selection - Small enough for Mac MPS
 MODEL_NAME = "Qwen/Qwen2.5-0.5B-Instruct" 
 
-print(f"🚀 Initializing Math Escalation Training on MPS...")
+print("🚀 Initializing Math Escalation Training on MPS...")
 print(f"📦 Model: {MODEL_NAME}")
 
 device = "mps" if torch.backends.mps.is_available() else "cpu"
 print(f"🖥️  Using device: {device}")
 
 # 2. Tokenizer and Model
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-tokenizer.pad_token = tokenizer.eos_token
+try:
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+    tokenizer.pad_token = tokenizer.eos_token
 
-model = AutoModelForCausalLM.from_pretrained(
-    MODEL_NAME,
-    torch_dtype=torch.float16 if device == "mps" else torch.float32,
-).to(device)
+    model = AutoModelForCausalLM.from_pretrained(
+        MODEL_NAME,
+        torch_dtype=torch.float16 if device == "mps" else torch.float32,
+    ).to(device)
+except Exception as e:
+    msg = str(e)
+    if "ProxyError" in msg or "403 Forbidden" in msg:
+        raise SystemExit(
+            "Failed to download the base model from Hugging Face (proxy/403).\n"
+            "Fix: run in an environment with Hugging Face access, or pre-download the model\n"
+            "into the local HF cache, or set MODEL_NAME to a local path.\n\n"
+            f"Original error: {e}"
+        )
+    raise
 
 # 3. Environment Interaction (Theme #4: Self-Improvement)
 def call_env(tool, args={}, episode_id=None):
@@ -127,6 +138,10 @@ training_args = GRPOConfig(
     logging_steps=1,
     save_steps=100,
     report_to="none",
+    # Hardware selection: TRL/Transformers needs explicit CPU flag when no GPU/MPS is used.
+    use_cpu=(device == "cpu"),
+    bf16=False,
+    fp16=(device == "mps"),
     # GRPO Specifics
     num_generations=8, # Increased for better relative reward signal
     max_completion_length=128, # Increased for reasoning

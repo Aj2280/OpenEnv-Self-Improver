@@ -105,29 +105,70 @@ print("[train_worker] Hyperparameters this run:")
 for _k, _v in HP.items():
     print(f"  {_k}: {_v}")
 
-# 1. Login to Hugging Face
-hf_token = os.environ.get("HF_TOKEN")
+# 1. Login to Hugging Face (Spaces secrets usually set HF_TOKEN; CLI often uses HUGGING_FACE_HUB_TOKEN)
+hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
 if not hf_token:
-    raise ValueError("HF_TOKEN environment variable is not set!")
+    raise ValueError(
+        "No Hugging Face token found. Set secret HF_TOKEN (or HUGGING_FACE_HUB_TOKEN) on the Space."
+    )
 login(token=hf_token)
 api = HfApi(token=hf_token)
 
 MODEL_NAME = HP["model_name"]
 
 
+def _output_repo_slug(model_name: str) -> str:
+    """HF repo name fragment from a model id (lowercase, hyphens, safe length)."""
+    base = model_name.split("/")[-1].lower()
+    base = re.sub(r"[^a-z0-9]+", "-", base)
+    base = re.sub(r"-{2,}", "-", base).strip("-")
+    return (base[:48] if base else "model")
+
+
 def resolve_output_repo() -> str:
-    configured = os.environ.get("OUTPUT_REPO") or os.environ.get("HF_OUTPUT_REPO")
+    """Resolve Hub repo for trained weights.
+
+    Priority:
+      1. OUTPUT_REPO or HF_OUTPUT_REPO if set (full ``owner/repo``).
+      2. Else ``{token_owner}/math-escalation-grpo-{model-slug}`` so the repo
+         matches the **actual** base model and lives in the **token user's**
+         namespace (avoids 403 when the Space is under an org but the token
+         only has write on a personal account, or vice versa).
+    """
+    configured = (os.environ.get("OUTPUT_REPO") or os.environ.get("HF_OUTPUT_REPO") or "").strip()
     if configured:
         return configured
     try:
-        username = api.whoami(token=hf_token)["name"]
-        return f"{username}/Math-Escalation-GRPO-0.5B"
+        me = api.whoami(token=hf_token)
+        username = me["name"]
     except Exception as e:
-        print(f"Notice: Could not resolve HF token username ({e}); using local fallback name.")
-        return "Math-Escalation-GRPO-0.5B"
+        print(
+            f"Notice: Could not resolve HF token user ({e}); Hub upload needs owner/repo. "
+            "Set OUTPUT_REPO or HF_OUTPUT_REPO to user-or-org/model-repo, or fix HF_TOKEN."
+        )
+        return ""
+
+    slug = _output_repo_slug(MODEL_NAME)
+    repo_id = f"{username}/math-escalation-grpo-{slug}"
+
+    space_id = (os.environ.get("SPACE_ID") or os.environ.get("SPACE_REPO_NAME") or "").strip()
+    if space_id and "/" in space_id:
+        space_owner = space_id.split("/", 1)[0]
+        if space_owner != username:
+            print(
+                f"Notice: Space owner namespace is '{space_owner}' but the token is logged in as "
+                f"'{username}'. Default push target is '{repo_id}' (token user's namespace). "
+                f"Set secret HF_OUTPUT_REPO={space_owner}/<repo> only if this token has write "
+                "access to that namespace."
+            )
+    return repo_id
 
 
 OUTPUT_REPO = resolve_output_repo()
+if OUTPUT_REPO:
+    print(f"[train_worker] Hub output repo: {OUTPUT_REPO}")
+else:
+    print("[train_worker] Hub output repo: (not set — will skip create/push unless fixed above)")
 
 # 2. Math Environment Setup
 def generate_problem(difficulty: int):
@@ -367,37 +408,47 @@ trainer.train()
 print("✅ Training complete!")
 
 # 6. Push to Hugging Face Hub
-print(f"🚀 Pushing model to {OUTPUT_REPO}...")
 push_succeeded = False
-try:
-    api.create_repo(repo_id=OUTPUT_REPO, exist_ok=True, private=False, token=hf_token)
-    if USE_UNSLOTH:
-        # Push using Unsloth's merged method so it can be loaded directly
-        # with AutoModelForCausalLM.
-        try:
-            model.push_to_hub_merged(OUTPUT_REPO, tokenizer, save_method="merged_16bit", token=hf_token)
-            print("✅ Model pushed to Hub successfully!")
-            push_succeeded = True
-        except Exception as e:
-            print(f"Notice: merged push failed: {e}")
-            print("Trying to push adapters only...")
+if not OUTPUT_REPO or "/" not in OUTPUT_REPO:
+    print("⚠️ Hub upload skipped: OUTPUT_REPO is not a valid 'owner/repo' id.")
+else:
+    print(f"🚀 Pushing model to {OUTPUT_REPO}...")
+    try:
+        api.create_repo(repo_id=OUTPUT_REPO, repo_type="model", exist_ok=True, private=False, token=hf_token)
+        if USE_UNSLOTH:
+            # Push using Unsloth's merged method so it can be loaded directly
+            # with AutoModelForCausalLM.
+            try:
+                model.push_to_hub_merged(OUTPUT_REPO, tokenizer, save_method="merged_16bit", token=hf_token)
+                print("✅ Model pushed to Hub successfully!")
+                push_succeeded = True
+            except Exception as e:
+                print(f"Notice: merged push failed: {e}")
+                print("Trying to push adapters only...")
+                model.push_to_hub(OUTPUT_REPO, token=hf_token)
+                tokenizer.push_to_hub(OUTPUT_REPO, token=hf_token)
+                print("✅ Adapters pushed to Hub.")
+                push_succeeded = True
+        else:
+            # Standard Transformers fallback push.
             model.push_to_hub(OUTPUT_REPO, token=hf_token)
             tokenizer.push_to_hub(OUTPUT_REPO, token=hf_token)
-            print("✅ Adapters pushed to Hub.")
+            print("✅ Transformers model pushed to Hub.")
             push_succeeded = True
-    else:
-        # Standard Transformers fallback push.
-        model.push_to_hub(OUTPUT_REPO, token=hf_token)
-        tokenizer.push_to_hub(OUTPUT_REPO, token=hf_token)
-        print("✅ Transformers model pushed to Hub.")
-        push_succeeded = True
-except Exception as e:
-    print(f"⚠️ Hub upload skipped: {e}")
-    print(
-        "Training finished, but the HF_TOKEN in this Space cannot create/upload "
-        f"to '{OUTPUT_REPO}'. Use a token with write permission, or set HF_OUTPUT_REPO "
-        "to a namespace owned by that token."
-    )
+    except Exception as e:
+        print(f"⚠️ Hub upload skipped: {e}")
+        owner = OUTPUT_REPO.split("/", 1)[0] if "/" in OUTPUT_REPO else OUTPUT_REPO
+        print(
+            "Training finished, but the Hub API rejected create/upload.\n"
+            "Fix (pick one):\n"
+            f"  • Use a token with **Write** access: https://huggingface.co/settings/tokens\n"
+            f"  • If '{owner}' is an **organization**, grant this token repo-create/write on the org,\n"
+            "    or set Space secret **HF_OUTPUT_REPO** to a repo under **your personal user**\n"
+            "    (the account shown when you create the token).\n"
+            "  • Fine-grained tokens: enable **Repositories: read/write** (and create) for that namespace."
+        )
+
+if not push_succeeded:
     local_dir = "./math_grpo_final"
     print(f"Saving trained adapters locally to {local_dir} so the run can finish cleanly...")
     model.save_pretrained(local_dir)

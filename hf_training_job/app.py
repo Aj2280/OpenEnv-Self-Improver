@@ -16,7 +16,7 @@ LOG_FILE = Path("train.log")
 STATUS_FILE = Path("status.txt")
 RUN_LOCK = threading.Lock()
 TRAINING_THREAD: threading.Thread | None = None
-APP_VERSION = "params-ui-v2-five"
+APP_VERSION = "params-ui-v2-five-hubfix"
 
 # Five user-facing defaults (must match train_worker fallbacks where applicable).
 DEFAULTS = {
@@ -164,7 +164,11 @@ with gr.Blocks(title="Math Escalation GRPO Trainer") as demo:
         "**Note:** Transformers may print yellow `FutureWarning` lines during GRPO — those are "
         "normal. The bottom **Container** tray red error **BodyStreamBuffer was aborted** usually "
         "means the Space restarted or the log stream was cut off; use **Refresh logs** here for "
-        "the real `train.log` tail."
+        "the real `train.log` tail.\n\n"
+        "**Hub upload:** In Space **Settings → Secrets**, set **`HF_TOKEN`** to a token with "
+        "**Write** permission (same account or org you want to publish under). Optional: "
+        "**`HF_OUTPUT_REPO`** = `your-user/your-model-repo` to override the auto name "
+        "(`math-escalation-grpo-<model>` under the token owner)."
     )
 
     with gr.Row():

@@ -105,7 +105,16 @@ def check_answer(expected: float, model_answer: float) -> float:
     return 1.0 if abs(model_answer - expected) < 1e-4 else -0.5
 
 # 3. Reward Function
-def compute_reward(completions, prompts, answers, **kwargs):
+# TRL GRPO calls: reward_func(prompts=..., completions=..., completion_ids=..., **reward_kwargs).
+# Extra dataset columns (e.g. "answer") arrive in reward_kwargs, not as a positional `answers`.
+def compute_reward(prompts, completions, completion_ids=None, **kwargs):
+    answers = kwargs.get("answer")
+    if answers is None:
+        answers = kwargs.get("answers")
+    if answers is None:
+        raise ValueError(
+            "Expected dataset column 'answer' in batch (TRL passes it as keyword 'answer')."
+        )
     rewards = []
     for completion, prompt, expected in zip(completions, prompts, answers):
         text = completion[0]['content'] if isinstance(completion, list) else str(completion)

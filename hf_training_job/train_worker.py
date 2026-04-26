@@ -40,6 +40,15 @@ for _name in [
     _install_module_mock(_name)
 
 import torch
+
+# Unsloth must load before transformers / peft / trl so its patches apply.
+_HAS_UNSLOTH = True
+try:
+    import unsloth  # noqa: F401
+except Exception as _unsloth_import_err:
+    _HAS_UNSLOTH = False
+    _UNSLOTH_IMPORT_ERR = _unsloth_import_err
+
 import datasets
 from huggingface_hub import login, HfApi
 from transformers import AutoTokenizer, AutoModelForCausalLM
@@ -152,15 +161,14 @@ def build_curriculum_dataset(n_problems=400):
     random.shuffle(data)
     return datasets.Dataset.from_list(data)
 
-# 5. Load Model & Train
+# 5. Load Model & Train (trl after unsloth import above)
 from trl import GRPOConfig, GRPOTrainer
 
-USE_UNSLOTH = True
-try:
+USE_UNSLOTH = _HAS_UNSLOTH
+if USE_UNSLOTH:
     from unsloth import FastLanguageModel
-except Exception as e:
-    USE_UNSLOTH = False
-    print(f"⚠️ Unsloth unavailable in this environment: {e}")
+else:
+    print(f"⚠️ Unsloth unavailable in this environment: {_UNSLOTH_IMPORT_ERR}")
     print("⚠️ Falling back to standard Transformers model loading.")
 
 if USE_UNSLOTH:
@@ -194,27 +202,41 @@ else:
 
 train_dataset = build_curriculum_dataset(400)
 
-# Compatibility shim: TRL 0.12 expects `model.warnings_issued` (a dict) to be
-# present on HF models, but transformers>=5.0 removed that attribute. Patch it
-# at every wrapper level so PEFT's __getattr__ chain finds it.
-def _patch_warnings_issued(m):
+# Compatibility shim: TRL 0.12 does `model.warnings_issued["estimate_tokens"] = True`.
+# transformers>=5 removed `warnings_issued`; PEFT forwards missing attrs to the inner
+# causal LM, so every module in the delegation chain needs a real dict in __dict__.
+def _patch_warnings_issued(root):
+    stack = [root]
     seen = set()
-    def _walk(obj):
-        if obj is None or id(obj) in seen:
-            return
-        seen.add(id(obj))
-        try:
-            if not hasattr(obj, "warnings_issued") or not isinstance(
-                getattr(obj, "warnings_issued", None), dict
-            ):
-                object.__setattr__(obj, "warnings_issued", {})
-        except Exception:
-            pass
+    while stack:
+        obj = stack.pop()
+        if obj is None:
+            continue
+        oid = id(obj)
+        if oid in seen:
+            continue
+        seen.add(oid)
+        if isinstance(obj, torch.nn.Module):
+            if not isinstance(obj.__dict__.get("warnings_issued"), dict):
+                obj.__dict__["warnings_issued"] = {}
         for attr in ("base_model", "model", "module"):
-            inner = getattr(obj, attr, None)
-            if inner is not None and inner is not obj:
-                _walk(inner)
-    _walk(m)
+            try:
+                inner = getattr(obj, attr, None)
+            except Exception:
+                inner = None
+            if inner is not None and id(inner) != oid:
+                stack.append(inner)
+        get_bm = getattr(obj, "get_base_model", None)
+        if callable(get_bm):
+            try:
+                inner = get_bm()
+                if inner is not None and id(inner) != oid:
+                    stack.append(inner)
+            except Exception:
+                pass
+        for child in getattr(obj, "_modules", {}).values():
+            if child is not None and id(child) != oid:
+                stack.append(child)
 
 _patch_warnings_issued(model)
 

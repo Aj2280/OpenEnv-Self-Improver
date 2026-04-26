@@ -60,10 +60,25 @@ hf_token = os.environ.get("HF_TOKEN")
 if not hf_token:
     raise ValueError("HF_TOKEN environment variable is not set!")
 login(token=hf_token)
+api = HfApi(token=hf_token)
 
 # Model configuration
 MODEL_NAME = "unsloth/Qwen2.5-0.5B-Instruct"
-OUTPUT_REPO = "Abhi2280/Math-Escalation-GRPO-0.5B"
+
+
+def resolve_output_repo() -> str:
+    configured = os.environ.get("OUTPUT_REPO") or os.environ.get("HF_OUTPUT_REPO")
+    if configured:
+        return configured
+    try:
+        username = api.whoami(token=hf_token)["name"]
+        return f"{username}/Math-Escalation-GRPO-0.5B"
+    except Exception as e:
+        print(f"Notice: Could not resolve HF token username ({e}); using local fallback name.")
+        return "Math-Escalation-GRPO-0.5B"
+
+
+OUTPUT_REPO = resolve_output_repo()
 
 # 2. Math Environment Setup
 def generate_problem(difficulty: int):
@@ -297,29 +312,41 @@ print("✅ Training complete!")
 
 # 6. Push to Hugging Face Hub
 print(f"🚀 Pushing model to {OUTPUT_REPO}...")
+push_succeeded = False
 try:
-    api = HfApi()
-    api.create_repo(repo_id=OUTPUT_REPO, exist_ok=True, private=False)
-except Exception as e:
-    print(f"Notice: Could not create repo or it already exists. ({e})")
-
-if USE_UNSLOTH:
-    # Push using Unsloth's merged method so it can be loaded directly
-    # with AutoModelForCausalLM.
-    try:
-        model.push_to_hub_merged(OUTPUT_REPO, tokenizer, save_method="merged_16bit", token=hf_token)
-        print("✅ Model pushed to Hub successfully!")
-    except Exception as e:
-        print(f"❌ Failed to push model: {e}")
-        print("Trying to push adapters only...")
+    api.create_repo(repo_id=OUTPUT_REPO, exist_ok=True, private=False, token=hf_token)
+    if USE_UNSLOTH:
+        # Push using Unsloth's merged method so it can be loaded directly
+        # with AutoModelForCausalLM.
+        try:
+            model.push_to_hub_merged(OUTPUT_REPO, tokenizer, save_method="merged_16bit", token=hf_token)
+            print("✅ Model pushed to Hub successfully!")
+            push_succeeded = True
+        except Exception as e:
+            print(f"Notice: merged push failed: {e}")
+            print("Trying to push adapters only...")
+            model.push_to_hub(OUTPUT_REPO, token=hf_token)
+            tokenizer.push_to_hub(OUTPUT_REPO, token=hf_token)
+            print("✅ Adapters pushed to Hub.")
+            push_succeeded = True
+    else:
+        # Standard Transformers fallback push.
         model.push_to_hub(OUTPUT_REPO, token=hf_token)
         tokenizer.push_to_hub(OUTPUT_REPO, token=hf_token)
-        print("✅ Adapters pushed to Hub.")
-else:
-    # Standard Transformers fallback push.
-    model.push_to_hub(OUTPUT_REPO, token=hf_token)
-    tokenizer.push_to_hub(OUTPUT_REPO, token=hf_token)
-    print("✅ Transformers model pushed to Hub.")
+        print("✅ Transformers model pushed to Hub.")
+        push_succeeded = True
+except Exception as e:
+    print(f"⚠️ Hub upload skipped: {e}")
+    print(
+        "Training finished, but the HF_TOKEN in this Space cannot create/upload "
+        f"to '{OUTPUT_REPO}'. Use a token with write permission, or set HF_OUTPUT_REPO "
+        "to a namespace owned by that token."
+    )
+    local_dir = "./math_grpo_final"
+    print(f"Saving trained adapters locally to {local_dir} so the run can finish cleanly...")
+    model.save_pretrained(local_dir)
+    tokenizer.save_pretrained(local_dir)
+    print("✅ Local adapter save complete.")
 
 # 7. Pause Space (Auto-downscale)
 try:

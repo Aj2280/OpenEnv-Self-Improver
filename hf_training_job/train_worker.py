@@ -194,6 +194,30 @@ else:
 
 train_dataset = build_curriculum_dataset(400)
 
+# Compatibility shim: TRL 0.12 expects `model.warnings_issued` (a dict) to be
+# present on HF models, but transformers>=5.0 removed that attribute. Patch it
+# at every wrapper level so PEFT's __getattr__ chain finds it.
+def _patch_warnings_issued(m):
+    seen = set()
+    def _walk(obj):
+        if obj is None or id(obj) in seen:
+            return
+        seen.add(id(obj))
+        try:
+            if not hasattr(obj, "warnings_issued") or not isinstance(
+                getattr(obj, "warnings_issued", None), dict
+            ):
+                object.__setattr__(obj, "warnings_issued", {})
+        except Exception:
+            pass
+        for attr in ("base_model", "model", "module"):
+            inner = getattr(obj, attr, None)
+            if inner is not None and inner is not obj:
+                _walk(inner)
+    _walk(m)
+
+_patch_warnings_issued(model)
+
 training_args = GRPOConfig(
     output_dir="./math_grpo",
     num_train_epochs=1,

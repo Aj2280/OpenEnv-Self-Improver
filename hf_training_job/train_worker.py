@@ -3,18 +3,23 @@ import sys
 import random
 import re
 import math
+from unittest.mock import MagicMock
 
-# Mock llm_blender before importing trl to avoid the broken
-# `from transformers.utils.hub import TRANSFORMERS_CACHE` import
-# (TRANSFORMERS_CACHE was removed in transformers>=4.38).
-# TRL only uses llm_blender for pairwise judges, not GRPO training.
-try:
-    import llm_blender  # noqa: F401
-except (ImportError, Exception):
-    from unittest.mock import MagicMock
-    sys.modules["llm_blender"] = MagicMock()
-    sys.modules["llm_blender.blender"] = MagicMock()
-    sys.modules["llm_blender.blender.blender"] = MagicMock()
+# Pre-populate sys.modules with mocks for llm_blender BEFORE any trl import.
+# llm_blender is installed but broken: it imports TRANSFORMERS_CACHE from
+# transformers.utils.hub which was removed in transformers>=4.38.
+# TRL only uses llm_blender for pairwise judges, not GRPO training itself.
+# Pre-populating sys.modules prevents Python from ever loading the real package.
+_llm_mock = MagicMock()
+for _mod in [
+    "llm_blender",
+    "llm_blender.blender",
+    "llm_blender.blender.blender",
+    "llm_blender.blender.blender_utils",
+    "llm_blender.pair_ranker",
+    "llm_blender.pair_ranker.pairrm",
+]:
+    sys.modules[_mod] = _llm_mock
 
 import torch
 import datasets

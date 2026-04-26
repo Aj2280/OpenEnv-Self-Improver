@@ -18,8 +18,11 @@ WORKDIR $HOME/app
 COPY --chown=user requirements.txt $HOME/app/
 
 # Install Python dependencies in one layer for better reproducibility.
+# Explicitly uninstall llm_blender if cached from a previous layer,
+# as it is incompatible with transformers>=4.38 (TRANSFORMERS_CACHE removed).
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
- && pip install --no-cache-dir -r requirements.txt
+ && pip install --no-cache-dir -r requirements.txt \
+ && pip uninstall -y llm_blender 2>/dev/null || true
 
 # Copy application files
 COPY --chown=user . $HOME/app/

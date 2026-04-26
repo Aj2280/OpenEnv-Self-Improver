@@ -16,15 +16,15 @@ LOG_FILE = Path("train.log")
 STATUS_FILE = Path("status.txt")
 RUN_LOCK = threading.Lock()
 TRAINING_THREAD: threading.Thread | None = None
-APP_VERSION = "params-ui-v2-five-hubfix"
+APP_VERSION = "params-ui-v3-accuracy"
 
-# Five user-facing defaults (must match train_worker fallbacks where applicable).
+# Defaults aligned with train_worker accuracy-oriented fallbacks (user can lower for speed).
 DEFAULTS = {
     "model_name": "unsloth/Qwen2.5-0.5B-Instruct",
-    "dataset_size": 200,
-    "max_steps": 30,
+    "dataset_size": 250,
+    "max_steps": 50,
     "learning_rate": 5e-6,
-    "num_generations": 4,
+    "num_generations": 5,
 }
 
 MODEL_CHOICES = [
@@ -168,7 +168,10 @@ with gr.Blocks(title="Math Escalation GRPO Trainer") as demo:
         "**Hub upload:** In Space **Settings → Secrets**, set **`HF_TOKEN`** to a token with "
         "**Write** permission (same account or org you want to publish under). Optional: "
         "**`HF_OUTPUT_REPO`** = `your-user/your-model-repo` to override the auto name "
-        "(`math-escalation-grpo-<model>` under the token owner)."
+        "(`math-escalation-grpo-<model>` under the token owner).\n\n"
+        "**Accuracy (v3):** Worker uses correctness-heavy rewards (+2 / −1), robust number "
+        "extraction after `</thought>`, longer completions (192 tok), LoRA r=32, and 5 rollouts "
+        "by default — increase **Max GRPO steps** toward 80–100 on T4 for higher scores."
     )
 
     with gr.Row():
@@ -188,7 +191,7 @@ with gr.Blocks(title="Math Escalation GRPO Trainer") as demo:
             )
             max_steps = gr.Slider(
                 minimum=5,
-                maximum=100,
+                maximum=120,
                 step=5,
                 value=DEFAULTS["max_steps"],
                 label="Max GRPO steps",
@@ -199,7 +202,7 @@ with gr.Blocks(title="Math Escalation GRPO Trainer") as demo:
             )
             num_generations = gr.Slider(
                 minimum=2,
-                maximum=6,
+                maximum=8,
                 step=1,
                 value=DEFAULTS["num_generations"],
                 label="GRPO generations per prompt",

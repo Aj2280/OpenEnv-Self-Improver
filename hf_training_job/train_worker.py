@@ -58,7 +58,7 @@ except ImportError:  # older huggingface_hub
     from huggingface_hub.utils import RepositoryNotFoundError  # type: ignore
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-print("[train_worker] reward_fn API: v3 *args/**kwargs (fix TRL answer kw)")
+print("[train_worker] reward_fn API: v4 robust extract + correctness-heavy (HF accuracy)")
 print("[train_worker] hyperparameters API: v1 read from env (MES_*)")
 
 
@@ -95,15 +95,16 @@ def _env_str(name: str, default: str) -> str:
 HP = {
     "model_name":         _env_str  ("MES_MODEL_NAME",         "unsloth/Qwen2.5-0.5B-Instruct"),
     "dataset_size":       _env_int  ("MES_DATASET_SIZE",       400),
-    "max_steps":          _env_int  ("MES_MAX_STEPS",          50),
+    # More steps + longer completions + bigger LoRA = measurably higher reward/accuracy on T4.
+    "max_steps":          _env_int  ("MES_MAX_STEPS",          60),
     "learning_rate":      _env_float("MES_LEARNING_RATE",      5e-6),
     "batch_size":         _env_int  ("MES_BATCH_SIZE",         2),
     "grad_accum":         _env_int  ("MES_GRAD_ACCUM",         4),
-    "num_generations":    _env_int  ("MES_NUM_GENERATIONS",    4),
-    "max_completion":     _env_int  ("MES_MAX_COMPLETION",     128),
-    "temperature":        _env_float("MES_TEMPERATURE",        0.9),
-    "lora_r":             _env_int  ("MES_LORA_R",             16),
-    "lora_alpha":         _env_int  ("MES_LORA_ALPHA",         32),
+    "num_generations":    _env_int  ("MES_NUM_GENERATIONS",    5),
+    "max_completion":     _env_int  ("MES_MAX_COMPLETION",     192),
+    "temperature":        _env_float("MES_TEMPERATURE",        0.85),
+    "lora_r":             _env_int  ("MES_LORA_R",             32),
+    "lora_alpha":         _env_int  ("MES_LORA_ALPHA",         64),
     "warmup_ratio":       _env_float("MES_WARMUP_RATIO",       0.05),
 }
 print("[train_worker] Hyperparameters this run:")
@@ -213,8 +214,34 @@ def generate_problem(difficulty: int):
         e = (a * x_val + b) // div
         return f"Solve for x: ({a}x + {b}) / {div} = {e}", float(x_val)
 
-def check_answer(expected: float, model_answer: float) -> float:
-    return 1.0 if abs(model_answer - expected) < 1e-4 else -0.5
+_NUM_RE = re.compile(r"-?\d+\.?\d*")
+
+
+def _extract_predicted_number(text: str):
+    """Match training signal to eval: prefer post-</thought> answer, then \\boxed{}, else last number."""
+    boxed = re.search(r"\\boxed\{\s*(-?\d+\.?\d*)\s*\}", text)
+    if boxed:
+        try:
+            return float(boxed.group(1))
+        except ValueError:
+            pass
+    if "</thought>" in text:
+        after = text.split("</thought>", 1)[1]
+        nums = _NUM_RE.findall(after)
+        if nums:
+            try:
+                return float(nums[0])
+            except ValueError:
+                pass
+    clean = re.sub(r"<thought>.*?</thought>", "", text, flags=re.DOTALL)
+    nums = _NUM_RE.findall(clean)
+    if nums:
+        try:
+            return float(nums[-1])
+        except ValueError:
+            return None
+    return None
+
 
 # 3. Reward Function
 # TRL GRPO calls: reward_func(prompts=..., completions=..., completion_ids=..., **reward_kwargs).
@@ -243,31 +270,24 @@ def compute_reward(*args, **kwargs):
     for completion, prompt, expected in zip(completions, prompts, answers):
         text = completion[0]['content'] if isinstance(completion, list) else str(completion)
 
-        # Component 1: Reasoning format reward
+        predicted = _extract_predicted_number(text)
+        numeric_reward = 0.12 if predicted is not None else -0.25
+
+        try:
+            expected_val = float(expected)
+        except Exception:
+            expected_val = None
+
+        env_reward = -1.0
+        if predicted is not None and expected_val is not None:
+            env_reward = 2.0 if abs(predicted - expected_val) < 1e-4 else -1.0
+
+        # Small format bonus only if we also produced a number (can't game format alone).
         format_reward = 0.0
-        if '<thought>' in text and '</thought>' in text:
-            format_reward += 0.5
-            m = re.search(r'<thought>(.*?)</thought>', text, re.DOTALL)
-            if m and len(m.group(1).strip()) > 10:
-                format_reward += 0.2  
+        if predicted is not None and "<thought>" in text and "</thought>" in text:
+            format_reward = 0.15
 
-        # Component 2: Numeric presence reward
-        clean = re.sub(r'<thought>.*?</thought>', '', text, flags=re.DOTALL)
-        nums = re.findall(r'-?\d+\.?\d*', clean)
-        numeric_reward = 0.3 if nums else 0.0
-
-        # Component 3: Correctness reward
-        env_reward = -0.5
-        if nums:
-            try:
-                predicted = float(nums[-1])
-                expected_val = float(expected)
-                env_reward = check_answer(expected_val, predicted)
-            except Exception:
-                env_reward = -0.5
-
-        total = env_reward + format_reward + numeric_reward
-        rewards.append(total)
+        rewards.append(env_reward + numeric_reward + format_reward)
 
     return rewards
 
@@ -287,8 +307,9 @@ def build_curriculum_dataset(n_problems=400):
             problem_str, answer = generate_problem(tier)
             prompt = (
                 f"Solve the following math problem. "
-                f"Think step-by-step inside <thought> tags, "
-                f"then give ONLY the final numeric answer.\n\n"
+                f"Think step-by-step inside <thought>...</thought>. "
+                f"After </thought>, output ONLY the final numeric answer "
+                f"(one number, no extra words).\n\n"
                 f"[Tier {tier}/10] Problem: {problem_str}\n"
                 f"Answer:"
             )

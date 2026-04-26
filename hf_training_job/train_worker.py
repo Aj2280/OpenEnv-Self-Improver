@@ -1,7 +1,21 @@
 import os
+import sys
 import random
 import re
 import math
+
+# Mock llm_blender before importing trl to avoid the broken
+# `from transformers.utils.hub import TRANSFORMERS_CACHE` import
+# (TRANSFORMERS_CACHE was removed in transformers>=4.38).
+# TRL only uses llm_blender for pairwise judges, not GRPO training.
+try:
+    import llm_blender  # noqa: F401
+except (ImportError, Exception):
+    from unittest.mock import MagicMock
+    sys.modules["llm_blender"] = MagicMock()
+    sys.modules["llm_blender.blender"] = MagicMock()
+    sys.modules["llm_blender.blender.blender"] = MagicMock()
+
 import torch
 import datasets
 from huggingface_hub import login, HfApi

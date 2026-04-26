@@ -51,6 +51,11 @@ except Exception as _unsloth_import_err:
 
 import datasets
 from huggingface_hub import login, HfApi
+
+try:
+    from huggingface_hub.errors import RepositoryNotFoundError
+except ImportError:  # older huggingface_hub
+    from huggingface_hub.utils import RepositoryNotFoundError  # type: ignore
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 print("[train_worker] reward_fn API: v3 *args/**kwargs (fix TRL answer kw)")
@@ -414,7 +419,19 @@ if not OUTPUT_REPO or "/" not in OUTPUT_REPO:
 else:
     print(f"🚀 Pushing model to {OUTPUT_REPO}...")
     try:
-        api.create_repo(repo_id=OUTPUT_REPO, repo_type="model", exist_ok=True, private=False, token=hf_token)
+        # If the model repo already exists (created once in the web UI), skip
+        # create_repo — many Space tokens can *push* but get 403 on *create*.
+        try:
+            api.repo_info(repo_id=OUTPUT_REPO, repo_type="model", token=hf_token)
+            print(f"Hub: model repo exists — skipping create_repo ({OUTPUT_REPO})")
+        except RepositoryNotFoundError:
+            api.create_repo(
+                repo_id=OUTPUT_REPO,
+                repo_type="model",
+                exist_ok=True,
+                private=False,
+                token=hf_token,
+            )
         if USE_UNSLOTH:
             # Push using Unsloth's merged method so it can be loaded directly
             # with AutoModelForCausalLM.
@@ -438,14 +455,16 @@ else:
     except Exception as e:
         print(f"⚠️ Hub upload skipped: {e}")
         owner = OUTPUT_REPO.split("/", 1)[0] if "/" in OUTPUT_REPO else OUTPUT_REPO
+        repo_short = OUTPUT_REPO.split("/", 1)[1] if "/" in OUTPUT_REPO else OUTPUT_REPO
         print(
             "Training finished, but the Hub API rejected create/upload.\n"
             "Fix (pick one):\n"
-            f"  • Use a token with **Write** access: https://huggingface.co/settings/tokens\n"
-            f"  • If '{owner}' is an **organization**, grant this token repo-create/write on the org,\n"
-            "    or set Space secret **HF_OUTPUT_REPO** to a repo under **your personal user**\n"
-            "    (the account shown when you create the token).\n"
-            "  • Fine-grained tokens: enable **Repositories: read/write** (and create) for that namespace."
+            f"  • **Easiest:** Create an empty model repo once (no API): https://huggingface.co/new-model\n"
+            f"    Owner **{owner}**, name **`{repo_short}`** — then re-run; upload skips repo create.\n"
+            f"  • Or use a token with **Write** + repo create: https://huggingface.co/settings/tokens\n"
+            f"  • If '{owner}' is an **organization**, grant the token repo write on the org, or set\n"
+            "    Space secret **HF_OUTPUT_REPO** to `user/model` under an account you control.\n"
+            "  • Fine-grained tokens: **Repositories: read/write** for that namespace."
         )
 
 if not push_succeeded:

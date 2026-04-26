@@ -54,6 +54,56 @@ from huggingface_hub import login, HfApi
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 print("[train_worker] reward_fn API: v3 *args/**kwargs (fix TRL answer kw)")
+print("[train_worker] hyperparameters API: v1 read from env (MES_*)")
+
+
+# All hyperparameters are read from env vars so the Gradio app can let the
+# user override them per-run without editing this file. Falls back to the
+# previous hardcoded defaults.
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        return int(float(raw))
+    except (TypeError, ValueError):
+        print(f"[train_worker] Warning: bad int for {name}={raw!r}, using {default}")
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        print(f"[train_worker] Warning: bad float for {name}={raw!r}, using {default}")
+        return default
+
+
+def _env_str(name: str, default: str) -> str:
+    raw = os.environ.get(name)
+    return raw if raw else default
+
+
+HP = {
+    "model_name":         _env_str  ("MES_MODEL_NAME",         "unsloth/Qwen2.5-0.5B-Instruct"),
+    "dataset_size":       _env_int  ("MES_DATASET_SIZE",       400),
+    "max_steps":          _env_int  ("MES_MAX_STEPS",          50),
+    "learning_rate":      _env_float("MES_LEARNING_RATE",      5e-6),
+    "batch_size":         _env_int  ("MES_BATCH_SIZE",         2),
+    "grad_accum":         _env_int  ("MES_GRAD_ACCUM",         4),
+    "num_generations":    _env_int  ("MES_NUM_GENERATIONS",    4),
+    "max_completion":     _env_int  ("MES_MAX_COMPLETION",     128),
+    "temperature":        _env_float("MES_TEMPERATURE",        0.9),
+    "lora_r":             _env_int  ("MES_LORA_R",             16),
+    "lora_alpha":         _env_int  ("MES_LORA_ALPHA",         32),
+    "warmup_ratio":       _env_float("MES_WARMUP_RATIO",       0.05),
+}
+print("[train_worker] Hyperparameters this run:")
+for _k, _v in HP.items():
+    print(f"  {_k}: {_v}")
 
 # 1. Login to Hugging Face
 hf_token = os.environ.get("HF_TOKEN")
@@ -62,8 +112,7 @@ if not hf_token:
 login(token=hf_token)
 api = HfApi(token=hf_token)
 
-# Model configuration
-MODEL_NAME = "unsloth/Qwen2.5-0.5B-Instruct"
+MODEL_NAME = HP["model_name"]
 
 
 def resolve_output_repo() -> str:
@@ -178,12 +227,15 @@ def compute_reward(*args, **kwargs):
 
 # 4. Dataset Building
 def build_curriculum_dataset(n_problems=400):
-    print(f"📊 Building curriculum dataset with {n_problems} problems...")
+    """Build a curriculum dataset of about `n_problems` items, scaling the
+    base tier distribution proportionally so the user can choose dataset size."""
+    print(f"📊 Building curriculum dataset with target ~{n_problems} problems...")
+    base = {1: 60, 2: 60, 3: 50, 4: 50, 5: 40, 6: 40, 7: 30, 8: 30, 9: 20, 10: 20}
+    base_total = sum(base.values())
+    scale = n_problems / base_total
+    tier_counts = {t: max(1, int(round(c * scale))) for t, c in base.items()}
+
     data = []
-    tier_counts = {
-        1: 60, 2: 60, 3: 50, 4: 50, 5: 40,
-        6: 40, 7: 30, 8: 30, 9: 20, 10: 20
-    }
     for tier, count in tier_counts.items():
         for _ in range(count):
             problem_str, answer = generate_problem(tier)
@@ -197,6 +249,7 @@ def build_curriculum_dataset(n_problems=400):
             data.append({'prompt': prompt, 'answer': str(answer)})
 
     random.shuffle(data)
+    print(f"📊 Built dataset with {len(data)} problems across tiers 1-10")
     return datasets.Dataset.from_list(data)
 
 # 5. Load Model & Train (trl after unsloth import above)
@@ -210,26 +263,26 @@ else:
     print("⚠️ Falling back to standard Transformers model loading.")
 
 if USE_UNSLOTH:
-    print("Loading Qwen2.5-0.5B-Instruct with Unsloth 4-bit...")
+    print(f"Loading {MODEL_NAME} with Unsloth 4-bit...")
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=MODEL_NAME,
-        max_seq_length=512,
+        max_seq_length=max(512, HP["max_completion"] + 384),
         load_in_4bit=True,
         fast_inference=False,
     )
 
     model = FastLanguageModel.get_peft_model(
         model,
-        r=16,
+        r=HP["lora_r"],
         target_modules=['q_proj', 'k_proj', 'v_proj', 'o_proj', 'gate_proj', 'up_proj', 'down_proj'],
-        lora_alpha=32,
+        lora_alpha=HP["lora_alpha"],
         lora_dropout=0,
         bias='none',
         use_gradient_checkpointing='unsloth',
         random_state=3407,
     )
 else:
-    print("Loading Qwen2.5-0.5B-Instruct with Transformers fallback...")
+    print(f"Loading {MODEL_NAME} with Transformers fallback...")
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -238,7 +291,7 @@ else:
         torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
     )
 
-train_dataset = build_curriculum_dataset(400)
+train_dataset = build_curriculum_dataset(HP["dataset_size"])
 
 # Compatibility shim: TRL 0.12 does `model.warnings_issued["estimate_tokens"] = True`.
 # transformers>=5 removed `warnings_issued`; PEFT forwards missing attrs to the inner
@@ -278,23 +331,23 @@ def _patch_warnings_issued(root):
 
 _patch_warnings_issued(model)
 
+_logging_steps = max(1, HP["max_steps"] // 10)
+_save_steps = HP["max_steps"]
 training_args = GRPOConfig(
     output_dir="./math_grpo",
     num_train_epochs=1,
-    # Hugging Face demo run: cap training at 50 steps to reduce T4 runtime.
-    # Increase/remove max_steps for a longer production-quality run.
-    max_steps=50,
-    per_device_train_batch_size=2,
-    gradient_accumulation_steps=4,
-    learning_rate=5e-6,
-    logging_steps=5,
-    save_steps=50,
-    warmup_ratio=0.05,
+    max_steps=HP["max_steps"],
+    per_device_train_batch_size=HP["batch_size"],
+    gradient_accumulation_steps=HP["grad_accum"],
+    learning_rate=HP["learning_rate"],
+    logging_steps=_logging_steps,
+    save_steps=_save_steps,
+    warmup_ratio=HP["warmup_ratio"],
     lr_scheduler_type='cosine',
     report_to='none',
-    num_generations=4,
-    max_completion_length=128,
-    temperature=0.9,
+    num_generations=HP["num_generations"],
+    max_completion_length=HP["max_completion"],
+    temperature=HP["temperature"],
     gradient_checkpointing=True,
     use_cpu=(not torch.cuda.is_available()),
     fp16=torch.cuda.is_available(),

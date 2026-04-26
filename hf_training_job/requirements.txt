@@ -1,8 +1,9 @@
 gradio
-torch>=2.5.1
+torch>=2.11.0
 torchvision
 torchaudio
 bitsandbytes
+llm_blender
 unsloth @ git+https://github.com/unslothai/unsloth.git
 unsloth_zoo @ git+https://github.com/unslothai/unsloth-zoo.git
 trl>=0.12.0

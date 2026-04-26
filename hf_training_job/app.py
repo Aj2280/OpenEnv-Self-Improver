@@ -258,8 +258,6 @@ with gr.Blocks(title="Math Escalation GRPO Trainer") as demo:
                 label="Status + tail of train.log",
                 value=get_logs(),
                 lines=32,
-                max_lines=32,
-                show_copy_button=True,
             )
             refresh_btn = gr.Button("Refresh Logs")
 

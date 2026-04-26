@@ -281,11 +281,14 @@ _patch_warnings_issued(model)
 training_args = GRPOConfig(
     output_dir="./math_grpo",
     num_train_epochs=1,
+    # Hugging Face demo run: cap training at 50 steps to reduce T4 runtime.
+    # Increase/remove max_steps for a longer production-quality run.
+    max_steps=50,
     per_device_train_batch_size=2,
     gradient_accumulation_steps=4,
     learning_rate=5e-6,
-    logging_steps=10,
-    save_steps=100,
+    logging_steps=5,
+    save_steps=50,
     warmup_ratio=0.05,
     lr_scheduler_type='cosine',
     report_to='none',

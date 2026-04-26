@@ -63,13 +63,13 @@ def start_training() -> str:
     return get_logs()
 
 
-# Start training automatically on app startup, after clearing stale logs.
-start_training()
-
-
 def get_logs() -> str:
     status = STATUS_FILE.read_text(encoding="utf-8").strip() if STATUS_FILE.exists() else "starting"
     return f"App version: {APP_VERSION}\nStatus: {status}\n\n{_read_tail()}"
+
+
+# Start training automatically on app startup, after clearing stale logs.
+start_training()
 
 
 with gr.Blocks() as demo:

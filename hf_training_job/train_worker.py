@@ -5,6 +5,7 @@ import math
 import torch
 import datasets
 from huggingface_hub import login, HfApi
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
 # 1. Login to Hugging Face
 hf_token = os.environ.get("HF_TOKEN")
@@ -115,27 +116,44 @@ def build_curriculum_dataset(n_problems=400):
     return datasets.Dataset.from_list(data)
 
 # 5. Load Model & Train
-from unsloth import FastLanguageModel
 from trl import GRPOConfig, GRPOTrainer
 
-print("Loading Qwen2.5-0.5B-Instruct with Unsloth 4-bit...")
-model, tokenizer = FastLanguageModel.from_pretrained(
-    model_name=MODEL_NAME,
-    max_seq_length=512,
-    load_in_4bit=True,
-    fast_inference=True,
-)
+USE_UNSLOTH = True
+try:
+    from unsloth import FastLanguageModel
+except Exception as e:
+    USE_UNSLOTH = False
+    print(f"⚠️ Unsloth unavailable in this environment: {e}")
+    print("⚠️ Falling back to standard Transformers model loading.")
 
-model = FastLanguageModel.get_peft_model(
-    model,
-    r=16,
-    target_modules=['q_proj', 'k_proj', 'v_proj', 'o_proj', 'gate_proj', 'up_proj', 'down_proj'],
-    lora_alpha=32,
-    lora_dropout=0,
-    bias='none',
-    use_gradient_checkpointing='unsloth',
-    random_state=3407,
-)
+if USE_UNSLOTH:
+    print("Loading Qwen2.5-0.5B-Instruct with Unsloth 4-bit...")
+    model, tokenizer = FastLanguageModel.from_pretrained(
+        model_name=MODEL_NAME,
+        max_seq_length=512,
+        load_in_4bit=True,
+        fast_inference=True,
+    )
+
+    model = FastLanguageModel.get_peft_model(
+        model,
+        r=16,
+        target_modules=['q_proj', 'k_proj', 'v_proj', 'o_proj', 'gate_proj', 'up_proj', 'down_proj'],
+        lora_alpha=32,
+        lora_dropout=0,
+        bias='none',
+        use_gradient_checkpointing='unsloth',
+        random_state=3407,
+    )
+else:
+    print("Loading Qwen2.5-0.5B-Instruct with Transformers fallback...")
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    model = AutoModelForCausalLM.from_pretrained(
+        MODEL_NAME,
+        torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+    )
 
 train_dataset = build_curriculum_dataset(400)
 
@@ -154,6 +172,9 @@ training_args = GRPOConfig(
     max_completion_length=128,
     temperature=0.9,
     gradient_checkpointing=True,
+    use_cpu=(not torch.cuda.is_available()),
+    fp16=torch.cuda.is_available(),
+    bf16=False,
 )
 
 trainer = GRPOTrainer(
@@ -176,17 +197,23 @@ try:
 except Exception as e:
     print(f"Notice: Could not create repo or it already exists. ({e})")
 
-# Push using Unsloth's merged method so it can be loaded directly with AutoModelForCausalLM
-try:
-    model.push_to_hub_merged(OUTPUT_REPO, tokenizer, save_method="merged_16bit", token=hf_token)
-    print("✅ Model pushed to Hub successfully!")
-except Exception as e:
-    print(f"❌ Failed to push model: {e}")
-    # Fallback: push adapters only
-    print("Trying to push adapters only...")
+if USE_UNSLOTH:
+    # Push using Unsloth's merged method so it can be loaded directly
+    # with AutoModelForCausalLM.
+    try:
+        model.push_to_hub_merged(OUTPUT_REPO, tokenizer, save_method="merged_16bit", token=hf_token)
+        print("✅ Model pushed to Hub successfully!")
+    except Exception as e:
+        print(f"❌ Failed to push model: {e}")
+        print("Trying to push adapters only...")
+        model.push_to_hub(OUTPUT_REPO, token=hf_token)
+        tokenizer.push_to_hub(OUTPUT_REPO, token=hf_token)
+        print("✅ Adapters pushed to Hub.")
+else:
+    # Standard Transformers fallback push.
     model.push_to_hub(OUTPUT_REPO, token=hf_token)
     tokenizer.push_to_hub(OUTPUT_REPO, token=hf_token)
-    print("✅ Adapters pushed to Hub.")
+    print("✅ Transformers model pushed to Hub.")
 
 # 7. Pause Space (Auto-downscale)
 try:

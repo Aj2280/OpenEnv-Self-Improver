@@ -26,7 +26,14 @@ print("Setting secrets...")
 # The training space needs a token to push artifacts/models back to the Hub.
 # We read it from your local environment and store it as a Space secret.
 api.add_space_secret(repo_id, "HF_TOKEN", token)
-api.add_space_secret(repo_id, "SPACE_ID", repo_id)
+# SPACE_ID is reserved by Hugging Face Spaces and causes configuration errors.
+# Use HF_SPACE_ID instead and also clean up any stale reserved secret.
+try:
+    api.delete_space_secret(repo_id, "SPACE_ID")
+except Exception:
+    # Not present is fine.
+    pass
+api.add_space_secret(repo_id, "HF_SPACE_ID", repo_id)
 
 print("Requesting T4-small GPU hardware...")
 try:

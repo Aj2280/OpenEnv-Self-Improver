@@ -191,7 +191,9 @@ except Exception as e:
 # 7. Pause Space (Auto-downscale)
 try:
     print("💤 Pausing Hugging Face Space to save credits...")
-    space_id = os.environ.get("SPACE_ID")
+    # SPACE_ID is a reserved env var on HF Spaces; use HF_SPACE_ID.
+    # Fall back to this trainer space id if the secret is missing.
+    space_id = os.environ.get("HF_SPACE_ID", "Abhi2280/Math-Escalation-Trainer")
     if space_id:
         api.pause_space(repo_id=space_id)
         print("✅ Space paused.")

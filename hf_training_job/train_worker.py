@@ -53,6 +53,8 @@ import datasets
 from huggingface_hub import login, HfApi
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
+print("[train_worker] reward_fn API: v3 *args/**kwargs (fix TRL answer kw)")
+
 # 1. Login to Hugging Face
 hf_token = os.environ.get("HF_TOKEN")
 if not hf_token:
@@ -106,14 +108,26 @@ def check_answer(expected: float, model_answer: float) -> float:
 
 # 3. Reward Function
 # TRL GRPO calls: reward_func(prompts=..., completions=..., completion_ids=..., **reward_kwargs).
-# Extra dataset columns (e.g. "answer") arrive in reward_kwargs, not as a positional `answers`.
-def compute_reward(prompts, completions, completion_ids=None, **kwargs):
-    answers = kwargs.get("answer")
-    if answers is None:
-        answers = kwargs.get("answers")
+# Ground truth lives in reward_kwargs under the dataset column name (we use "answer"), not "answers".
+# Use *args/**kwargs only so a stale (completions, prompts, answers) parameter order can never break calls.
+def compute_reward(*args, **kwargs):
+    prompts = kwargs.get("prompts")
+    completions = kwargs.get("completions")
+    _ = kwargs.get("completion_ids")  # unused
+    answers = kwargs.get("answer") or kwargs.get("answers")
+    if len(args) >= 3 and answers is None:
+        answers = args[2]
+    if len(args) >= 2 and (prompts is None or completions is None):
+        completions, prompts = args[0], args[1]
+    if prompts is None or completions is None:
+        raise ValueError(
+            "compute_reward: missing prompts/completions "
+            f"(args={len(args)}, kwargs={sorted(kwargs.keys())})"
+        )
     if answers is None:
         raise ValueError(
-            "Expected dataset column 'answer' in batch (TRL passes it as keyword 'answer')."
+            "compute_reward: need dataset column 'answer' (or kw 'answers'). "
+            f"kwargs keys: {sorted(k for k in kwargs if k not in ('trainer_state', 'log_extra', 'log_metric'))}"
         )
     rewards = []
     for completion, prompt, expected in zip(completions, prompts, answers):

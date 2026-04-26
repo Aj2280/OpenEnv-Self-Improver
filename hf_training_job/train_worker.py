@@ -6,32 +6,38 @@ import math
 import importlib.machinery
 from unittest.mock import MagicMock
 
-# Pre-populate sys.modules with mocks for llm_blender BEFORE any trl import.
-# llm_blender is installed but broken: it imports TRANSFORMERS_CACHE from
-# transformers.utils.hub which was removed in transformers>=4.38.
-# TRL only uses llm_blender for pairwise judges (DPO/RLHF), not GRPO training.
+# Pre-populate sys.modules with mocks for optional TRL dependencies BEFORE
+# any `from trl import ...`. TRL's callbacks.py and judges.py do unconditional
+# `import llm_blender` and `import weave`, neither of which we use for GRPO.
+#
+# - llm_blender on PyPI is broken: it imports TRANSFORMERS_CACHE from
+#   transformers.utils.hub which was removed in transformers>=4.38.
+# - weave (W&B tracing) is heavy and not needed for offline training.
 #
 # importlib.util.find_spec() reads module.__spec__ and raises ValueError if
-# it's None or missing. So we attach a real ModuleSpec to our mock; that lets
-# TRL's _is_package_available() succeed, and any `import llm_blender` returns
-# our MagicMock instead of trying to load the real (broken) package.
-def _install_llm_blender_mock():
-    for name in [
-        "llm_blender",
-        "llm_blender.blender",
-        "llm_blender.blender.blender",
-        "llm_blender.blender.blender_utils",
-        "llm_blender.pair_ranker",
-        "llm_blender.pair_ranker.pairrm",
-    ]:
-        mock = MagicMock()
-        mock.__spec__ = importlib.machinery.ModuleSpec(name, loader=None)
-        mock.__name__ = name
-        mock.__file__ = "<mocked>"
-        mock.__path__ = []
-        sys.modules[name] = mock
+# it's None or missing. We attach a real ModuleSpec so find_spec succeeds,
+# and any subsequent `import X` returns our MagicMock.
+def _install_module_mock(name: str):
+    mock = MagicMock()
+    mock.__spec__ = importlib.machinery.ModuleSpec(name, loader=None)
+    mock.__name__ = name
+    mock.__file__ = "<mocked>"
+    mock.__path__ = []
+    sys.modules[name] = mock
+    return mock
 
-_install_llm_blender_mock()
+for _name in [
+    "llm_blender",
+    "llm_blender.blender",
+    "llm_blender.blender.blender",
+    "llm_blender.blender.blender_utils",
+    "llm_blender.pair_ranker",
+    "llm_blender.pair_ranker.pairrm",
+    "weave",
+    "weave.trace",
+    "weave.trace.context",
+]:
+    _install_module_mock(_name)
 
 import torch
 import datasets

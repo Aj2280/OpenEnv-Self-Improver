@@ -1,7 +1,7 @@
 FROM python:3.10-slim
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y git build-essential gcc curl
+RUN apt-get update && apt-get install -y git build-essential gcc curl && rm -rf /var/lib/apt/lists/*
 
 # Create user for Hugging Face Spaces
 RUN useradd -m -u 1000 user
@@ -14,16 +14,12 @@ ENV HOME=/home/user \
 # Set working directory
 WORKDIR $HOME/app
 
-# Install PyTorch 2.5.1+ with CUDA 12.4
-RUN pip install --no-cache-dir "torch>=2.5.1" "torchvision" "torchaudio" --index-url https://download.pytorch.org/whl/cu124
-
 # Copy requirements
 COPY --chown=user requirements.txt $HOME/app/
 
-# Install Unsloth and other dependencies
-RUN pip install --no-cache-dir "unsloth @ git+https://github.com/unslothai/unsloth.git" "unsloth_zoo @ git+https://github.com/unslothai/unsloth-zoo.git"
-RUN pip install --no-cache-dir gradio
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies in one layer for better reproducibility.
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
+ && pip install --no-cache-dir -r requirements.txt
 
 # Copy application files
 COPY --chown=user . $HOME/app/

@@ -169,7 +169,7 @@ if USE_UNSLOTH:
         model_name=MODEL_NAME,
         max_seq_length=512,
         load_in_4bit=True,
-        fast_inference=True,
+        fast_inference=False,
     )
 
     model = FastLanguageModel.get_peft_model(

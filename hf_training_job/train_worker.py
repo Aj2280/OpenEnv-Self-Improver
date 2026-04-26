@@ -404,18 +404,28 @@ except Exception as e:
     tokenizer.save_pretrained(local_dir)
     print("✅ Local adapter save complete.")
 
-# 7. Pause Space (Auto-downscale)
-try:
-    print("💤 Pausing Hugging Face Space to save credits...")
-    # SPACE_ID is a reserved env var on HF Spaces; use HF_SPACE_ID.
-    # Fall back to this trainer space id if the secret is missing.
-    space_id = os.environ.get("HF_SPACE_ID", "Abhi2280/Math-Escalation-Trainer")
-    if space_id:
-        api.pause_space(repo_id=space_id)
-        print("✅ Space paused.")
-    else:
-        print("Notice: SPACE_ID env var not found, skipping pause.")
-except Exception as e:
-    print(f"❌ Failed to pause space: {e}")
+# 7. Optional: pause Space after run (saves credits but kills the container —
+# the HF web UI often shows "BodyStreamBuffer was aborted" on the log stream).
+_pause_flag = (
+    os.environ.get("MES_PAUSE_SPACE", "")
+    or os.environ.get("HF_PAUSE_SPACE_AFTER_RUN", "")
+    or ""
+).strip().lower() in ("1", "true", "yes", "on")
+if _pause_flag:
+    try:
+        print("💤 Pausing Hugging Face Space (MES_PAUSE_SPACE / HF_PAUSE_SPACE_AFTER_RUN set)...")
+        space_id = os.environ.get("HF_SPACE_ID", "Abhi2280/Math-Escalation-Trainer")
+        if space_id:
+            api.pause_space(repo_id=space_id)
+            print("✅ Space paused.")
+        else:
+            print("Notice: HF_SPACE_ID not set, skipping pause.")
+    except Exception as e:
+        print(f"❌ Failed to pause space: {e}")
+else:
+    print(
+        "Notice: Space left running after training (default). "
+        "Set MES_PAUSE_SPACE=1 to auto-pause and save GPU hours."
+    )
 
 print("🎉 Job fully complete.")

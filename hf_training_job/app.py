@@ -160,7 +160,11 @@ with gr.Blocks(title="Math Escalation GRPO Trainer") as demo:
     gr.Markdown(
         "This Space uses a **small 5-control** form so it stays compatible with Hugging Face "
         "Spaces. Adjust the options, then click **Start Training**. Other hyperparameters "
-        "(batch size, LoRA, temperature, etc.) use safe defaults in the training worker."
+        "(batch size, LoRA, temperature, etc.) use safe defaults in the training worker.\n\n"
+        "**Note:** Transformers may print yellow `FutureWarning` lines during GRPO — those are "
+        "normal. The bottom **Container** tray red error **BodyStreamBuffer was aborted** usually "
+        "means the Space restarted or the log stream was cut off; use **Refresh logs** here for "
+        "the real `train.log` tail."
     )
 
     with gr.Row():

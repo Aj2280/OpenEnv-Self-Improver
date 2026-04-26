@@ -11,6 +11,9 @@ from unittest.mock import MagicMock
 # TRL only uses llm_blender for pairwise judges, not GRPO training itself.
 # Pre-populating sys.modules prevents Python from ever loading the real package.
 _llm_mock = MagicMock()
+# importlib.util.find_spec() reads module.__spec__; set it to None so TRL
+# treats llm_blender as "not available" rather than raising ValueError.
+_llm_mock.__spec__ = None
 for _mod in [
     "llm_blender",
     "llm_blender.blender",

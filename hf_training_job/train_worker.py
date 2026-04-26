@@ -3,26 +3,35 @@ import sys
 import random
 import re
 import math
+import importlib.machinery
 from unittest.mock import MagicMock
 
 # Pre-populate sys.modules with mocks for llm_blender BEFORE any trl import.
 # llm_blender is installed but broken: it imports TRANSFORMERS_CACHE from
 # transformers.utils.hub which was removed in transformers>=4.38.
-# TRL only uses llm_blender for pairwise judges, not GRPO training itself.
-# Pre-populating sys.modules prevents Python from ever loading the real package.
-_llm_mock = MagicMock()
-# importlib.util.find_spec() reads module.__spec__; set it to None so TRL
-# treats llm_blender as "not available" rather than raising ValueError.
-_llm_mock.__spec__ = None
-for _mod in [
-    "llm_blender",
-    "llm_blender.blender",
-    "llm_blender.blender.blender",
-    "llm_blender.blender.blender_utils",
-    "llm_blender.pair_ranker",
-    "llm_blender.pair_ranker.pairrm",
-]:
-    sys.modules[_mod] = _llm_mock
+# TRL only uses llm_blender for pairwise judges (DPO/RLHF), not GRPO training.
+#
+# importlib.util.find_spec() reads module.__spec__ and raises ValueError if
+# it's None or missing. So we attach a real ModuleSpec to our mock; that lets
+# TRL's _is_package_available() succeed, and any `import llm_blender` returns
+# our MagicMock instead of trying to load the real (broken) package.
+def _install_llm_blender_mock():
+    for name in [
+        "llm_blender",
+        "llm_blender.blender",
+        "llm_blender.blender.blender",
+        "llm_blender.blender.blender_utils",
+        "llm_blender.pair_ranker",
+        "llm_blender.pair_ranker.pairrm",
+    ]:
+        mock = MagicMock()
+        mock.__spec__ = importlib.machinery.ModuleSpec(name, loader=None)
+        mock.__name__ = name
+        mock.__file__ = "<mocked>"
+        mock.__path__ = []
+        sys.modules[name] = mock
+
+_install_llm_blender_mock()
 
 import torch
 import datasets
